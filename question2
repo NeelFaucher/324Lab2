@@ -28,7 +28,7 @@ LOOP:
 	POP {LR}
 
 	PUSH {LR, R0}
-	MOV R0, #0x30
+	MOV R0, #0x20
 	BL HEX_flood_ASM
 	POP {LR, R0}
 	
@@ -76,11 +76,11 @@ HEX_write_ASM:
 HEX_flood_ASM:
 	PUSH {R1, R2, R3, R4}
 	LDR R1, =HEX_45
-	LDR R2, =0xFFFF
-	STR R2, [R1]
-	
+
 	LDR R3, =0xFF
 	LDR R4, =HEX_03
+	
+	LDR R2, =0xFFFF
 	
 	CMP R0, #1
 	STREQB R3, [R4]
@@ -94,15 +94,14 @@ HEX_flood_ASM:
 	CMP R0, #8
 	STREQB R3, [R4, #3]
 	
-	CMP R0, #10
-	STREQB R3, [R4, #4]
+	CMP R0, #0x10
+	STREQB R3, [R1]
 	
-	CMP R0, #20
-	STREQB R3, [R4, #5]
+	CMP R0, #0x20
+	STREQB R3, [R1, #1]
 	
-	CMP R0, #30
-	LDR R2, =0xFFFF
-	STR R2, [R1]
+	CMP R0, #0x30
+	STREQB R2, [R1]
 	
 	
 	POP {R1, R2, R3, R4}
