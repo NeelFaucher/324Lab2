@@ -1,6 +1,7 @@
 .global _start
 
 .equ LOAD_ADDRESS, 0xFFFEC600
+.equ LED_MEMORY, 0xFF200000
 .equ CONTROL_ADDRESS, 0xFFFEC608
 .equ INTERRUPT_STATUS, 0xFFFEC60C
 .equ HEX_03, 0xFF200020
@@ -32,12 +33,20 @@ STOP_WATCH:
 	PUSH {LR}
 	BL HEX_write_ASM
 	POP {LR}
+	
+	PUSH {LR}
+	BL write_LEDs_ASM
+	POP {LR}
 
-	//PUSH {LR}
-	//BL ARM_TIM_clear_INT_ASM
-	//POP {LR}
 	MOV R0, #0
 	B STOP_WATCH
+
+write_LEDs_ASM:
+	PUSH {R0}
+	LDR R0, =LED_MEMORY
+    STR R9, [R0]
+	POP {R0}
+	BX LR
 
 ARM_TIM_config_ASM:
 	PUSH {R2, R3, R4}
