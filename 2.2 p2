@@ -9,7 +9,7 @@
 
 _start:
 
-LDR R0, =#200000
+LDR R0, =#2000000
 
 	PUSH {LR}
 	BL ARM_TIM_config_ASM
@@ -30,9 +30,22 @@ STOP_WATCH:
 	POP {LR}
 	
 	CMP R3, #2
-	PUSH {LR}
 	BLEQ PB_clear_edgecp_ASM
-	POP {LR}
+	BLEQ STOP_WATCH
+	
+	CMP R3, #4
+	MOVEQ R9, #0
+	MOVEQ R8, #0
+	MOVEQ R7, #0	
+	MOVEQ R6, #0
+	MOVEQ R5, #0
+	
+	@ANDEQ R9, R9, #0
+	@ANDEQ R8, R8, #0
+	@ANDEQ R7, R7, #0	
+	@ANDEQ R6, R6, #0
+	@ANDEQ R5, R5, #0
+	BLEQ PB_clear_edgecp_ASM
 	BLEQ STOP_WATCH
 	
 	CMP R0, #1
