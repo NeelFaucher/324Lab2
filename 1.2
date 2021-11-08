@@ -164,23 +164,26 @@ PB_clear_edgecp_ASM:
 	BX LR
 	 
 enable_PB_INT_ASM:
-	PUSH {R1, R3}
-	LDR R0, =PB_INTERRUPT_MASK
-	LDR R1, [R0]
-	MOV R3, #1
-	CMP R1, #1
-	STREQ R3, [R0]
+	PUSH {R2, R9}
+	LDR R9, =PB_INTERRUPT_MASK
+
+	TST R0, #1
+	ORRGT R2, R0, #1
+	STRNE R2, [R9]
 	
-	CMP R1, #2
-	STREQ R3, [R0, #1]
+	TST R0, #2
+	ORRGT R2, R0, #1
+	STRNE R2, [R9]
 	
-	CMP R1, #4
-	STREQ R3, [R0, #2]
+	TST R0, #4
+	ORRGT R2, R0, #1
+	STRNE R2, [R9]
 	
-	CMP R1, #8
-	STREQ R3, [R0, #3]
+	TST R0, #8
+	ORRGT R2, R0, #1
+	STRNE R2, [R9]
 	
-	POP {R1, R3}
+	POP {R9}
 	BX LR
 	
 
