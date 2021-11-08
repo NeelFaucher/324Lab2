@@ -1,3 +1,13 @@
+.section .vectors, "ax"
+B _start
+B SERVICE_UND       // undefined instruction vector
+B SERVICE_SVC       // software interrupt vector
+B SERVICE_ABT_INST  // aborted prefetch vector
+B SERVICE_ABT_DATA  // aborted data vector
+.word 0 // unused vector
+B SERVICE_IRQ       // IRQ interrupt vector
+B SERVICE_FIQ       // FIQ interrupt vector
+
 .text
 .global _start
 
@@ -7,6 +17,9 @@ tim_int_flag: .word 0x0
 .equ PB_INTERRUPT_MASK, 0xFF200058
 .equ LOAD_ADDRESS, 0xFFFEC600
 .equ CONTROL_ADDRESS, 0xFFFEC608
+.equ INTERRUPT_STATUS, 0xFFFEC60C
+.equ HEX_03, 0xFF200020
+.equ HEX_45, 0xFF200030
 
 _start:
     /* Set up stack pointers for IRQ and SVC processor modes */
@@ -22,16 +35,9 @@ _start:
     // Or, you can call enable_PB_INT_ASM subroutine from previous task
     // to enable interrupt for ARM A9 private timer, use ARM_TIM_config_ASM subroutine
 	
-	LDR R1, =#2000000
-	PUSH {LR}
-	BL read_PB_edgecp_ASM
-	POP {LR}
-	PUSH {LR}
 	BL enable_PB_INT_ASM
-	POP {LR}
-	PUSH {LR}
+	LDR R0, =#2000000
 	BL ARM_TIM_config_ASM
-	POP {LR}
 	
     LDR        R0, =0xFF200050      // pushbutton KEY base address
     MOV        R1, #0xF             // set interrupt mask bits
@@ -40,6 +46,84 @@ _start:
     MOV        R0, #0b01010011      // IRQ unmasked, MODE = SVC
     MSR        CPSR_c, R0
 IDLE:
+	LDR R9, =PB_int_flag
+	LDR R3, [R9]
+
+	// If R3 = 1 (PB0) -> start counter
+	TST R3, #1
+	LDR R8, =tim_int_flag
+	LDR R0, [R8]
+	BL read_PB_edgecp_ASM
+	
+	// If R3 = 2 (PB1) -> stop counter
+	TST R3, #2
+	MOVNE R3, #0
+	BLNE IDLE
+	
+	// If R3 = 4 (PB2) -> reset counter
+	TST R3, #4
+	// Reseting counter by setting counter values (R4 - R9) to 0
+	ANDNE R9, R9, #0
+	ANDNE R8, R8, #0
+	ANDNE R7, R7, #0	
+	ANDNE R6, R6, #0
+	ANDNE R5, R5, #0
+	ANDNE R4, R4, #0
+	BLNE PB_clear_edgecp_ASM
+	BLNE IDLE
+	
+	CMP R0, #1
+	BLEQ ARM_TIM_clear_INT_ASM
+	
+// Incrementing counters R9, R8, R7, R5, R4 to 10 and resetting them if equal
+// This is because the corresponding displays are required to increment to 9 before resetting and incrementing again
+	ADDEQ R9, R9, #1
+	CMP R9, #10
+	MOVEQ R9, #0
+	
+	ADDEQ R8, R8, #1
+	CMP R8, #10
+	MOVEQ R8, #0
+
+	ADDEQ R7, R7, #1
+	CMP R7, #10
+	MOVEQ R7, #0
+
+// Incremening R6 and comparing it to 6 before resetting it
+// This is because R6 (display 4) is only supposed to increment to 5 before resetting as the display represents minutes in the stopwatch 
+	ADDEQ R6, R6, #1
+	CMP R6, #6 // SHOULD THIS BE 7?
+	MOVEQ R6, #0
+
+	ADDEQ R5, R5, #1
+	CMP R5, #10
+	MOVEQ R5, #0
+
+	ADDEQ R4, R4, #1
+	CMP R4, #10
+	MOVEQ R4, #0
+
+	PUSH {LR}
+	BL HEX_write_ASM_1
+	POP {LR}
+	PUSH {LR}
+	BL HEX_write_ASM_2
+	POP {LR}
+	PUSH {LR}
+	BL HEX_write_ASM_3
+	POP {LR}	
+	PUSH {LR}
+	BL HEX_write_ASM_4
+	POP {LR}	
+	PUSH {LR}
+	BL HEX_write_ASM_5
+	POP {LR}	
+	PUSH {LR}
+	BL HEX_write_ASM_6
+	POP {LR}
+
+	MOV R0, #0
+
     B IDLE // This is where you write your objective task
 	
 /*--- Undefined instructions ---------------------------------------- */
@@ -160,22 +244,23 @@ CONFIG_INTERRUPT:
     POP {R4-R5, PC}
 
 KEY_ISR:
-	PUSH {R9}
+	PUSH {R9, LR}
 	BL read_PB_edgecp_ASM
 	LDR R9, =PB_int_flag
 	STR R0, [R9]	
 	BL PB_clear_edgecp_ASM
-	POP {R9}
+	POP {R9, LR}
 	BX LR
 	
 ARM_TIM_ISR:
-	PUSH {R9}
+	PUSH {R8, R9}
 	BL read_PB_edgecp_ASM
 	//cmp
-	LDR R9, =PB_int_flag
-	STR #1, [R9]	
+	LDR R9, =tim_int_flag
+	MOV R8, #1
+	STR R8, [R9]	
 	BL PB_clear_edgecp_ASM
-	POP {R9}
+	POP {R8, R9}
 	BX LR
 
 read_PB_edgecp_ASM:
@@ -205,7 +290,7 @@ enable_PB_INT_ASM:
 	ORRGT R2, R0, #1
 	STRNE R2, [R9]
 	
-	POP {R9}
+	POP {R2, R9}
 	BX LR
 
 ARM_TIM_config_ASM:
@@ -226,5 +311,293 @@ PB_clear_edgecp_ASM:
 	POP {R1}
 	BX LR
 	
+HEX_write_ASM_1:
+	PUSH {R3, R5}
+	LDR R3, =HEX_03
+
+	CMP R9, #0
+	MOVEQ R5, #0x3F
+	STREQB R5, [R3]
+	
+	CMP R9, #1
+	MOVEQ R5, #6
+	STREQB R5, [R3]
+	
+	CMP R9, #2
+	MOVEQ R5, #0x5B
+	STREQB R5, [R3]
+	
+	CMP R9, #3
+	MOVEQ R5, #0x4F
+	STREQB R5, [R3]
+	
+	CMP R9, #4
+	MOVEQ R5, #0x66
+	STREQB R5, [R3]
+	
+	CMP R9, #5
+	MOVEQ R5, #0x6D
+	STREQB R5, [R3]
+	
+	CMP R9, #6
+	MOVEQ R5, #0x7D
+	STREQB R5, [R3]
+	
+	CMP R9, #7
+	MOVEQ R5, #0x07
+	STREQB R5, [R3]
+	
+	CMP R9, #8
+	MOVEQ R5, #0x7F
+	STREQB R5, [R3]
+	
+	CMP R9, #9
+	MOVEQ R5, #0x6F
+	STREQB R5, [R3]
+
+	POP {R3, R5}
+	BX LR
+	
+HEX_write_ASM_2:
+	PUSH {R3, R5}
+	LDR R3, =HEX_03
+
+	CMP R8, #0
+	MOVEQ R5, #0x3F
+	STREQB R5, [R3, #1]
+	
+	CMP R8, #1
+	MOVEQ R5, #6
+	STREQB R5, [R3, #1]
+	
+	CMP R8, #2
+	MOVEQ R5, #0x5B
+	STREQB R5, [R3, #1]
+	
+	CMP R8, #3
+	MOVEQ R5, #0x4F
+	STREQB R5, [R3, #1]
+	
+	CMP R8, #4
+	MOVEQ R5, #0x66
+	STREQB R5, [R3, #1]
+	
+	CMP R8, #5
+	MOVEQ R5, #0x6D
+	STREQB R5, [R3, #1]
+	
+	CMP R8, #6
+	MOVEQ R5, #0x7D
+	STREQB R5, [R3, #1]
+	
+	CMP R8, #7
+	MOVEQ R5, #0x07
+	STREQB R5, [R3, #1]
+	
+	CMP R8, #8
+	MOVEQ R5, #0x7F
+	STREQB R5, [R3, #1]
+	
+	CMP R8, #9
+	MOVEQ R5, #0x6F
+	STREQB R5, [R3, #1]
+
+	POP {R3, R5}
+	BX LR
+	
+HEX_write_ASM_3:
+	PUSH {R3, R5}
+	LDR R3, =HEX_03
+
+	CMP R7, #0
+	MOVEQ R5, #0x3F
+	STREQB R5, [R3, #2]
+	
+	CMP R7, #1
+	MOVEQ R5, #6
+	STREQB R5, [R3, #1]
+	
+	CMP R7, #2
+	MOVEQ R5, #6
+	STREQB R5, [R3, #2]
+	
+	CMP R7, #2
+	MOVEQ R5, #0x5B
+	STREQB R5, [R3, #2]
+	
+	CMP R7, #3
+	MOVEQ R5, #0x4F
+	STREQB R5, [R3, #2]
+	
+	CMP R7, #4
+	MOVEQ R5, #0x66
+	STREQB R5, [R3, #2]
+	
+	CMP R7, #5
+	MOVEQ R5, #0x6D
+	STREQB R5, [R3, #2]
+	
+	CMP R7, #6
+	MOVEQ R5, #0x7D
+	STREQB R5, [R3, #2]
+	
+	CMP R7, #7
+	MOVEQ R5, #0x07
+	STREQB R5, [R3, #2]
+	
+	CMP R7, #8
+	MOVEQ R5, #0x7F
+	STREQB R5, [R3, #2]
+	
+	CMP R7, #9
+	MOVEQ R5, #0x6F
+	STREQB R5, [R3, #2]
+
+	POP {R3, R5}
+	BX LR
+	
+HEX_write_ASM_4:
+	PUSH {R3, R5}
+	LDR R3, =HEX_03
+
+	CMP R6, #0
+	MOVEQ R5, #0x3F
+	STREQB R5, [R3, #3]
+	
+	CMP R6, #1
+	MOVEQ R5, #6
+	STREQB R5, [R3, #3]
+	
+	CMP R6, #2
+	MOVEQ R5, #0x5B
+	STREQB R5, [R3, #3]
+	
+	CMP R6, #3
+	MOVEQ R5, #0x4F
+	STREQB R5, [R3, #3]
+	
+	CMP R6, #4
+	MOVEQ R5, #0x66
+	STREQB R5, [R3, #3]
+	
+	CMP R6, #5
+	MOVEQ R5, #0x6D
+	STREQB R5, [R3, #3]
+	
+	CMP R6, #6
+	MOVEQ R5, #0x7D
+	STREQB R5, [R3, #3]
+	
+	POP {R3, R5}
+	BX LR
+	
+HEX_write_ASM_5:
+	PUSH {R3, R5}
+	LDR R3, =HEX_45
+
+	CMP R5, #0
+	MOVEQ R5, #0x3F
+	STREQB R5, [R3]
+	
+	CMP R5, #1
+	MOVEQ R5, #6
+	STREQB R5, [R3]
+	
+	CMP R5, #2
+	MOVEQ R5, #0x5B
+	STREQB R5, [R3]
+	
+	CMP R5, #3
+	MOVEQ R5, #0x4F
+	STREQB R5, [R3]
+	
+	CMP R5, #4
+	MOVEQ R5, #0x66
+	STREQB R5, [R3]
+	
+	CMP R5, #5
+	MOVEQ R5, #0x6D
+	STREQB R5, [R3]
+	
+	CMP R5, #6
+	MOVEQ R5, #0x7D
+	STREQB R5, [R3]
+	
+	CMP R5, #7
+	MOVEQ R5, #0x07
+	STREQB R5, [R3]
+	
+	CMP R5, #8
+	MOVEQ R5, #0x7F
+	STREQB R5, [R3]
+	
+	CMP R5, #9
+	MOVEQ R5, #0x6F
+	STREQB R5, [R3]
+
+	POP {R3, R5}
+	BX LR
+
+HEX_write_ASM_6:
+	PUSH {R3, R5}
+	LDR R3, =HEX_45
+
+	CMP R4, #0
+	MOVEQ R5, #0x3F
+	STREQB R5, [R3, #1]
+	
+	CMP R4, #1
+	MOVEQ R5, #6
+	STREQB R5, [R3, #1]
+	
+	CMP R4, #2
+	MOVEQ R5, #0x5B
+	STREQB R5, [R3, #1]
+	
+	CMP R4, #3
+	MOVEQ R5, #0x4F
+	STREQB R5, [R3, #1]
+	
+	CMP R4, #4
+	MOVEQ R5, #0x66
+	STREQB R5, [R3, #1]
+	
+	CMP R4, #5
+	MOVEQ R5, #0x6D
+	STREQB R5, [R3, #1]
+	
+	CMP R4, #6
+	MOVEQ R5, #0x7D
+	STREQB R5, [R3, #1]
+	
+	CMP R4, #7
+	MOVEQ R5, #0x07
+	STREQB R5, [R3, #1]
+	
+	CMP R4, #8
+	MOVEQ R5, #0x7F
+	STREQB R5, [R3, #1]
+	
+	CMP R4, #9
+	MOVEQ R5, #0x6F
+	STREQB R5, [R3, #1]
+	POP {R3, R5}
+	BX LR
+
+ARM_TIM_read_INT_ASM:
+	PUSH {R2, R3}
+	LDR R2, =INTERRUPT_STATUS
+	LDR R0, [R2]
+	POP {R2, R3}
+	BX LR
+
+ARM_TIM_clear_INT_ASM:
+	PUSH {R2, R3}
+	LDR R2, =INTERRUPT_STATUS
+	MOV R3, #0x00000001
+	STR R3, [R2]
+	POP {R2, R3}
+	BX LR
+
 END_KEY_ISR:
     BX LR
