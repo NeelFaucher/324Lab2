@@ -1,7 +1,12 @@
 .text
 .global _start
 
+PB_int_flag: .word 0x0
+tim_int_flag: .word 0x0
+.equ PB_MEMORY, 0xFF200050
 .equ PB_INTERRUPT_MASK, 0xFF200058
+.equ LOAD_ADDRESS, 0xFFFEC600
+.equ CONTROL_ADDRESS, 0xFFFEC608
 
 _start:
     /* Set up stack pointers for IRQ and SVC processor modes */
@@ -16,6 +21,18 @@ _start:
     // To DO: write to the pushbutton KEY interrupt mask register
     // Or, you can call enable_PB_INT_ASM subroutine from previous task
     // to enable interrupt for ARM A9 private timer, use ARM_TIM_config_ASM subroutine
+	
+	LDR R1, =#2000000
+	PUSH {LR}
+	BL read_PB_edgecp_ASM
+	POP {LR}
+	PUSH {LR}
+	BL enable_PB_INT_ASM
+	POP {LR}
+	PUSH {LR}
+	BL ARM_TIM_config_ASM
+	POP {LR}
+	
     LDR        R0, =0xFF200050      // pushbutton KEY base address
     MOV        R1, #0xF             // set interrupt mask bits
     STR        R1, [R0, #0x8]       // interrupt mask register (base + 8)
@@ -25,7 +42,7 @@ _start:
 IDLE:
     B IDLE // This is where you write your objective task
 	
-	/*--- Undefined instructions ---------------------------------------- */
+/*--- Undefined instructions ---------------------------------------- */
 SERVICE_UND:
     B SERVICE_UND
 /*--- Software interrupts ------------------------------------------- */
@@ -45,12 +62,22 @@ SERVICE_IRQ:
     LDR R5, [R4, #0x0C] // read from ICCIAR
 
 /* To Do: Check which interrupt has occurred (check interrupt IDs)
+
+
    Then call the corresponding ISR
    If the ID is not recognized, branch to UNEXPECTED
    See the assembly example provided in the De1-SoC Computer_Manual on page 46 */
- Pushbutton_check:
+
     CMP R5, #73
+	BLEQ KEY_ISR
+	
+	CMP R5, #29
+	BLEQ ARM_TIM_ISR
+
 UNEXPECTED:
+	CMP R5, #29
+	BEQ EXIT_IRQ
+	CMP R5, #73
     BNE UNEXPECTED      // if not recognized, stop here
     BL KEY_ISR
 EXIT_IRQ:
@@ -62,7 +89,6 @@ SUBS PC, LR, #4
 SERVICE_FIQ:
     B SERVICE_FIQ
 	
-	
 CONFIG_GIC:
     PUSH {LR}
 /* To configure the FPGA KEYS interrupt (ID 73):
@@ -71,6 +97,11 @@ CONFIG_GIC:
 /* CONFIG_INTERRUPT (int_ID (R0), CPU_target (R1)); */
 /* To Do: you can configure different interrupts
    by passing their IDs to R0 and repeating the next 3 lines */
+   
+	MOV R0, #29            // KEY port (Interrupt ID = 73)
+    MOV R1, #1             // this field is a bit-mask; bit 0 targets cpu0
+    BL CONFIG_INTERRUPT
+   
     MOV R0, #73            // KEY port (Interrupt ID = 73)
     MOV R1, #1             // this field is a bit-mask; bit 0 targets cpu0
     BL CONFIG_INTERRUPT
@@ -129,36 +160,24 @@ CONFIG_INTERRUPT:
     POP {R4-R5, PC}
 
 KEY_ISR:
-    LDR R0, =0xFF200050    // base address of pushbutton KEY port
-    LDR R1, [R0, #0xC]     // read edge capture register
-    MOV R2, #0xF
-    STR R2, [R0, #0xC]     // clear the interrupt
-    LDR R0, =0xFF200020    // based address of HEX display
-CHECK_KEY0:
-    MOV R3, #0x1
-    ANDS R3, R3, R1        // check for KEY0
-    BEQ CHECK_KEY1
-    MOV R2, #0b00111111
-    STR R2, [R0]           // display "0"
-    B END_KEY_ISR
-CHECK_KEY1:
-    MOV R3, #0x2
-    ANDS R3, R3, R1        // check for KEY1
-    BEQ CHECK_KEY2
-    MOV R2, #0b00000110
-    STR R2, [R0]           // display "1"
-    B END_KEY_ISR
-CHECK_KEY2:
-    MOV R3, #0x4
-    ANDS R3, R3, R1        // check for KEY2
-    BEQ IS_KEY3
-    MOV R2, #0b01011011
-    STR R2, [R0]           // display "2"
-    B END_KEY_ISR
-IS_KEY3:
-    MOV R2, #0b01001111
-    STR R2, [R0]           // display "3"
+	PUSH {R9}
+	BL read_PB_edgecp_ASM
+	LDR R9, =PB_int_flag
+	STR R0, [R9]	
+	BL PB_clear_edgecp_ASM
+	POP {R9}
+	BX LR
 	
+ARM_TIM_ISR:
+	PUSH {R9}
+	BL read_PB_edgecp_ASM
+	//cmp
+	LDR R9, =PB_int_flag
+	STR #1, [R9]	
+	BL PB_clear_edgecp_ASM
+	POP {R9}
+	BX LR
+
 read_PB_edgecp_ASM:
 	PUSH {R1}
 	LDR R1, =PB_MEMORY
@@ -187,6 +206,24 @@ enable_PB_INT_ASM:
 	STRNE R2, [R9]
 	
 	POP {R9}
+	BX LR
+
+ARM_TIM_config_ASM:
+	PUSH {R2, R3, R4}
+	LDR R2, =LOAD_ADDRESS
+	LDR R3, =CONTROL_ADDRESS
+
+	STR R0, [R2]
+	MOV R4, #0b0000011
+	STRB R4, [R3]
+	POP {R2, R3, R4}
+	BX LR
+	
+PB_clear_edgecp_ASM: 
+	PUSH {R1}
+	LDR R1, =PB_MEMORY
+	STR R0, [R1, #12]
+	POP {R1}
 	BX LR
 	
 END_KEY_ISR:
