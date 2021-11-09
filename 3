@@ -65,6 +65,18 @@ IDLE:
 	TST R3, #2
 	BNE IDLE
 	
+	CMP R3, #1
+	BEQ INCREMENT
+	BLNE HEX_write_ASM_1
+	BLNE HEX_write_ASM_2
+	BLNE HEX_write_ASM_3
+	BLNE HEX_write_ASM_4
+	BLNE HEX_write_ASM_5
+	BLNE HEX_write_ASM_6
+	BNE IDLE
+	
+	
+INCREMENT:
 	LDR R2, =tim_int_flag //8
 	LDR R0, [R2]
 	
