@@ -1,0 +1,20 @@
+.global _start
+.equ SW_MEMORY, 0xFF200040
+.equ LED_MEMORY, 0xFF200000
+_start:
+	B Loop
+	
+read_slider_switches_ASM:
+    LDR R1, =SW_MEMORY
+    LDR R0, [R1]
+    BX  LR
+
+write_LEDs_ASM:
+    LDR R1, =LED_MEMORY
+    STR R0, [R1]
+    BX  LR
+	
+Loop:
+	BL read_slider_switches_ASM
+	BL write_LEDs_ASM
+	B Loop
