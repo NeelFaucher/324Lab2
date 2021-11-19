@@ -1,4 +1,4 @@
-# ECSE 324 Computer Organization Lab2
+# ECSE 324 Computer Organization Lab 2
 
 Assembly program involving the basic I/O capabilities of the DE1-SoC computer, more specifically, the slider switches, pushbuttons, LEDs, 7-Segment (HEX) displays and timers.
 
