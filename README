@@ -13,3 +13,4 @@ are displayed on HEX1-0, seconds on HEX3-2, and minutes on HEX5-4. PB0, PB1, and
 
 Part 3: Stopwatch application using interrupts. In particular, enable interrupts for the ARM A9 private timer (ID: 29) used to count time for the stopwatch. 
 Also enable interrupts for the pushbuttons (ID: 73), determine which key was pressed when a pushbutton interrupt is received.
+
